@@ -1,0 +1,29 @@
+{
+  "name": "apex-server",
+  "version": "1.0.0",
+  "description": "This is a sports equipment e-commerce website",
+  "license": "ISC",
+  "author": "Nosa Enabu",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cloudinary": "^2.10.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-validator": "^7.3.2",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.7.2",
+    "morgan": "^1.11.0",
+    "multer": "^2.2.0",
+    "nodemon": "^3.1.14",
+    "slugify": "^1.6.9",
+    "twilio": "^6.0.2",
+    "winston": "^3.19.0"
+  }
+}
