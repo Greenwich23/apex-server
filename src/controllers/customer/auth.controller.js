@@ -1,22 +1,25 @@
+// controllers/customer/auth.controller.js
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import User from "../../models/User.js";
 import { successResponse, errorResponse } from "../../utils/apiResponse.js";
+import {
+  sendOtpEmail,
+  sendWelcomeEmail,
+  sendPasswordResetEmail,
+} from "../../services/emailService.js";
 
-// ─── helpers ────────────────────────────────────────────────────────────────
+// ─── helpers ──────────────────────────────────────────────────────────────────
 
-const generateToken = (userId, role) => {
-  return jwt.sign({ id: userId, role }, process.env.JWT_SECRET, {
+const generateToken = (userId, role) =>
+  jwt.sign({ id: userId, role }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || "7d",
   });
-};
 
-const generateOtp = () => {
-  // 6-digit numeric OTP
-  return Math.floor(100000 + Math.random() * 900000).toString();
-};
+const generateOtp = () =>
+  Math.floor(100000 + Math.random() * 900000).toString();
 
-// ─── REGISTER ───────────────────────────────────────────────────────────────
+// ─── REGISTER ────────────────────────────────────────────────────────────────
 
 // POST /api/auth/register
 export const register = async (req, res) => {
@@ -36,7 +39,7 @@ export const register = async (req, res) => {
       authProvider: "local",
     });
 
-    // send OTP for email verification (plug in your email service here)
+    // generate OTP and save to user
     const otp = generateOtp();
     user.otp = {
       code: otp,
@@ -45,30 +48,34 @@ export const register = async (req, res) => {
     user.isEmailVerified = false;
     await user.save();
 
-    // TODO: await sendOtpEmail(user.email, otp);
-    console.log(`OTP for ${email}: ${otp}`); // remove in production
+    // send OTP via EmailJS (non-blocking — signup succeeds even if email fails)
+    await sendOtpEmail(user.email, user.name, otp);
+    console.log(`📧 OTP for ${email}: ${otp}`);
 
-    const token = generateToken(user._id, user.role);
+    // ✅ NO token generated here - user must verify OTP first
 
     return successResponse(
       res,
-      "Registration successful. Please verify your email.",
-      { token, user },
-      201
+      "Registration successful. Please check your email for the OTP to verify your account.",
+      {
+        email: user.email,
+        message: "Please verify your email with the OTP sent to your inbox.",
+      },
+      201,
     );
   } catch (error) {
+    console.error("Registration error:", error);
     return errorResponse(res, error.message);
   }
 };
 
-// ─── LOGIN ───────────────────────────────────────────────────────────────────
+// ─── LOGIN ────────────────────────────────────────────────────────────────────
 
 // POST /api/auth/login
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // explicitly select password since it may be excluded by default
     const user = await User.findOne({ email }).select("+password");
     if (!user) {
       return errorResponse(res, "Invalid email or password", 401);
@@ -78,11 +85,20 @@ export const login = async (req, res) => {
       return errorResponse(res, "Your account has been deactivated", 403);
     }
 
+    // ✅ Check if email is verified
+    if (!user.isEmailVerified) {
+      return errorResponse(
+        res,
+        "Please verify your email before logging in. Check your inbox for the OTP.",
+        403,
+      );
+    }
+
     if (user.authProvider !== "local") {
       return errorResponse(
         res,
         `Please sign in with ${user.authProvider} instead`,
-        400
+        400,
       );
     }
 
@@ -121,8 +137,8 @@ export const sendOtp = async (req, res) => {
     };
     await user.save();
 
-    // TODO: await sendOtpEmail(user.email, otp);
-    console.log(`OTP for ${email}: ${otp}`); // remove in production
+    await sendOtpEmail(user.email, user.name, otp);
+    console.log(`📧 OTP resent to ${email}: ${otp}`);
 
     return successResponse(res, "OTP sent to your email");
   } catch (error) {
@@ -136,8 +152,12 @@ export const verifyOtp = async (req, res) => {
     const { email, otp } = req.body;
 
     const user = await User.findOne({ email });
-    if (!user) {
-      return errorResponse(res, "User not found", 404);
+    if (!user) return errorResponse(res, "User not found", 404);
+
+    // ✅ If already verified, just log them in
+    if (user.isEmailVerified) {
+      const token = generateToken(user._id, user.role);
+      return successResponse(res, "Email already verified", { token, user });
     }
 
     if (!user.otp?.code || !user.otp?.expiresAt) {
@@ -145,29 +165,42 @@ export const verifyOtp = async (req, res) => {
     }
 
     if (new Date() > user.otp.expiresAt) {
-      return errorResponse(res, "OTP has expired. Please request a new one", 400);
+      return errorResponse(
+        res,
+        "OTP has expired. Please request a new one",
+        400,
+      );
     }
 
     if (user.otp.code !== otp) {
       return errorResponse(res, "Incorrect OTP", 400);
     }
 
-    // clear OTP and mark email as verified
+    // ✅ Clear OTP and mark email as verified
     user.otp = { code: null, expiresAt: null };
     user.isEmailVerified = true;
     await user.save();
 
+    // send welcome email now that email is verified
+    await sendWelcomeEmail(user.email, user.name);
+
+    // ✅ NOW generate token and log the user in
     const token = generateToken(user._id, user.role);
 
-    return successResponse(res, "OTP verified successfully", { token, user });
+    return successResponse(
+      res,
+      "Email verified successfully. Welcome aboard!",
+      {
+        token,
+        user,
+      },
+    );
   } catch (error) {
     return errorResponse(res, error.message);
   }
 };
 
-// ─── GOOGLE / FACEBOOK (social auth) ─────────────────────────────────────────
-// You'd typically use passport.js or handle the token on the frontend
-// (Firebase Auth / Supabase) and just send the provider + providerId here
+// ─── SOCIAL AUTH ──────────────────────────────────────────────────────────────
 
 // POST /api/auth/social
 export const socialLogin = async (req, res) => {
@@ -177,17 +210,17 @@ export const socialLogin = async (req, res) => {
     let user = await User.findOne({ email });
 
     if (!user) {
-      // first time — create account automatically
       user = await User.create({
         name,
         email,
         providerId,
         authProvider,
         avatar,
-        isEmailVerified: true, // social accounts are pre-verified
+        isEmailVerified: true, // Social accounts are pre-verified
       });
+      // welcome email for new social signup
+      await sendWelcomeEmail(email, name);
     } else {
-      // returning user — update their provider info if needed
       user.providerId = providerId;
       user.authProvider = authProvider;
       user.lastLogin = new Date();
@@ -211,10 +244,10 @@ export const forgotPassword = async (req, res) => {
 
     const user = await User.findOne({ email });
     if (!user) {
-      // don't reveal if email exists or not — security best practice
+      // don't reveal if email exists — security best practice
       return successResponse(
         res,
-        "If an account exists with that email, a reset link has been sent"
+        "If an account exists with that email, a reset link has been sent",
       );
     }
 
@@ -224,17 +257,16 @@ export const forgotPassword = async (req, res) => {
       .createHash("sha256")
       .update(resetToken)
       .digest("hex");
-
-    user.passwordResetExpires = new Date(Date.now() + 30 * 60 * 1000); // 30 min
+    user.passwordResetExpires = new Date(Date.now() + 30 * 60 * 1000);
     await user.save();
 
-    const resetUrl = `${process.env.CUSTOMER_URL}/reset-password/${resetToken}`;
-    // TODO: await sendPasswordResetEmail(user.email, resetUrl);
-    console.log(`Reset URL: ${resetUrl}`); // remove in production
+    const resetUrl = `${process.env.CUSTOMER_URL}/auth/reset-password/${resetToken}`;
+
+    await sendPasswordResetEmail(user.email, user.name, resetUrl);
 
     return successResponse(
       res,
-      "If an account exists with that email, a reset link has been sent"
+      "If an account exists with that email, a reset link has been sent",
     );
   } catch (error) {
     return errorResponse(res, error.message);
@@ -247,10 +279,7 @@ export const resetPassword = async (req, res) => {
     const { token } = req.params;
     const { password } = req.body;
 
-    const hashedToken = crypto
-      .createHash("sha256")
-      .update(token)
-      .digest("hex");
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
 
     const user = await User.findOne({
       passwordResetToken: hashedToken,
@@ -272,11 +301,9 @@ export const resetPassword = async (req, res) => {
   }
 };
 
-// ─── LOGOUT ──────────────────────────────────────────────────────────────────
+// ─── LOGOUT ───────────────────────────────────────────────────────────────────
 
 // POST /api/auth/logout
-// With JWT you don't truly invalidate on the server unless you maintain
-// a token blacklist. For now we just confirm logout on the client side.
 export const logout = async (req, res) => {
   try {
     return successResponse(res, "Logged out successfully");

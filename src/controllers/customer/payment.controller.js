@@ -6,6 +6,8 @@ import Payment from "../../models/Payment.js";
 import ShipmentTracking from "../../models/ShipmentTracking.js";
 import { successResponse, errorResponse } from "../../utils/apiResponse.js";
 import logger from "../../utils/logger.js";
+import dotenv from "dotenv";
+dotenv.config();
 
 // ─── provider instances ───────────────────────────────────────────────────────
 
@@ -30,7 +32,7 @@ const confirmPayment = async (orderId, providerPaymentId, provider) => {
       status: "completed",
       providerPaymentId,
       provider,
-    }
+    },
   );
 
   await ShipmentTracking.findOneAndUpdate(
@@ -44,7 +46,7 @@ const confirmPayment = async (orderId, providerPaymentId, provider) => {
           timestamp: new Date(),
         },
       },
-    }
+    },
   );
 };
 
@@ -104,7 +106,7 @@ export const stripeWebhook = async (req, res) => {
     event = stripe.webhooks.constructEvent(
       req.body, // must be raw Buffer — NOT parsed JSON
       sig,
-      process.env.STRIPE_WEBHOOK_SECRET
+      process.env.STRIPE_WEBHOOK_SECRET,
     );
   } catch (error) {
     logger.error("Stripe webhook signature error", error);
@@ -122,10 +124,7 @@ export const stripeWebhook = async (req, res) => {
     if (event.type === "payment_intent.payment_failed") {
       const intent = event.data.object;
       const orderId = intent.metadata.orderId;
-      await Payment.findOneAndUpdate(
-        { order: orderId },
-        { status: "failed" }
-      );
+      await Payment.findOneAndUpdate({ order: orderId }, { status: "failed" });
       logger.warn(`Stripe payment failed for order ${orderId}`);
     }
 
@@ -190,7 +189,7 @@ export const createRazorpayOrder = async (req, res) => {
 export const verifyRazorpayPayment = async (req, res) => {
   try {
     const {
-      orderId,                 // our Order _id
+      orderId, // our Order _id
       razorpay_order_id,
       razorpay_payment_id,
       razorpay_signature,
@@ -203,7 +202,11 @@ export const verifyRazorpayPayment = async (req, res) => {
       .digest("hex");
 
     if (expectedSignature !== razorpay_signature) {
-      return errorResponse(res, "Payment verification failed. Invalid signature.", 400);
+      return errorResponse(
+        res,
+        "Payment verification failed. Invalid signature.",
+        400,
+      );
     }
 
     await confirmPayment(orderId, razorpay_payment_id, "razorpay");
@@ -252,11 +255,12 @@ export const confirmCodOrder = async (req, res) => {
         $push: {
           events: {
             status: "confirmed",
-            description: "COD order confirmed. Payment will be collected on delivery.",
+            description:
+              "COD order confirmed. Payment will be collected on delivery.",
             timestamp: new Date(),
           },
         },
-      }
+      },
     );
 
     return successResponse(res, "COD order confirmed successfully");

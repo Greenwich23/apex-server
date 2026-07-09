@@ -1,3 +1,4 @@
+// controllers/coupon.controller.js
 import Coupon from "../../models/Coupon.js";
 import CouponUsage from "../../models/CouponUsage.js";
 import Cart from "../../models/Cart.js";
@@ -39,17 +40,24 @@ export const validateCoupon = async (req, res) => {
     if (coupon.isFirstTimeOnly) {
       const previousOrders = await Order.countDocuments({ user: req.user.id });
       if (previousOrders > 0) {
-        return errorResponse(res, "This coupon is for first-time buyers only", 400);
+        return errorResponse(
+          res,
+          "This coupon is for first-time buyers only",
+          400,
+        );
       }
     }
 
     return successResponse(res, "Coupon is valid", {
       coupon: {
+        _id: coupon._id,
         code: coupon.code,
         type: coupon.type,
         value: coupon.value,
         minOrderAmount: coupon.minOrderAmount,
         maxDiscount: coupon.maxDiscount,
+        expiresAt: coupon.expiresAt,
+        isActive: coupon.isActive,
       },
     });
   } catch (error) {
@@ -69,20 +77,70 @@ export const applyCoupon = async (req, res) => {
       expiresAt: { $gt: new Date() },
     });
 
-    if (!coupon) return errorResponse(res, "Invalid or expired coupon code", 400);
+    if (!coupon) {
+      return errorResponse(res, "Invalid or expired coupon code", 400);
+    }
 
+    // Get user's cart
     const cart = await Cart.findOne({ user: req.user.id });
     if (!cart || cart.items.length === 0) {
       return errorResponse(res, "Your cart is empty", 400);
     }
 
-    cart.couponApplied = coupon._id;
+    // Calculate subtotal
+    const subtotal = cart.items.reduce(
+      (sum, item) => sum + item.price * item.quantity,
+      0,
+    );
+
+    // Check minimum order amount
+    if (coupon.minOrderAmount && subtotal < coupon.minOrderAmount) {
+      return errorResponse(
+        res,
+        `Minimum order amount of ₦${coupon.minOrderAmount} required for this coupon`,
+        400,
+      );
+    }
+
+    // ✅ Store FULL coupon object in the cart, not just the ID
+    cart.couponApplied = {
+      _id: coupon._id,
+      code: coupon.code,
+      type: coupon.type,
+      value: coupon.value,
+      minOrderAmount: coupon.minOrderAmount || 0,
+      maxDiscount: coupon.maxDiscount || null,
+      expiresAt: coupon.expiresAt,
+      isActive: coupon.isActive,
+      usageLimit: coupon.usageLimit,
+      perUserLimit: coupon.perUserLimit,
+      isFirstTimeOnly: coupon.isFirstTimeOnly,
+    };
+
     await cart.save();
 
-    return successResponse(res, "Coupon applied to cart", {
-      couponCode: coupon.code,
+    // Calculate discount for response
+    let discount = 0;
+    if (coupon.type === "percentage") {
+      discount = (subtotal * coupon.value) / 100;
+      if (coupon.maxDiscount) {
+        discount = Math.min(discount, coupon.maxDiscount);
+      }
+    } else {
+      discount = coupon.value;
+    }
+
+    return successResponse(res, "Coupon applied successfully", {
+      coupon: {
+        code: coupon.code,
+        type: coupon.type,
+        value: coupon.value,
+        discount: discount,
+      },
+      cart: await cart.populate("items.product items.variant"),
     });
   } catch (error) {
+    console.error("❌ Error applying coupon:", error);
     return errorResponse(res, error.message);
   }
 };
@@ -90,10 +148,7 @@ export const applyCoupon = async (req, res) => {
 // DELETE /api/coupons/remove
 export const removeCoupon = async (req, res) => {
   try {
-    await Cart.findOneAndUpdate(
-      { user: req.user.id },
-      { couponApplied: null }
-    );
+    await Cart.findOneAndUpdate({ user: req.user.id }, { couponApplied: null });
 
     return successResponse(res, "Coupon removed from cart");
   } catch (error) {

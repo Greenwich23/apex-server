@@ -9,22 +9,28 @@ dotenv.config({
 const startServer = async () => {
   console.log("Starting server...");
   try {
-    console.log("MONGO_URI:", process.env.MONGO_URI); // Log the MongoDB URI to the console for debugging
+    console.log("MONGO_URI:", process.env.MONGO_URI);
     await connectDB();
-    app.on("error", (error) => {
-      console.error("Error starting server:", error);
-      throw error; // Rethrow the error to be caught by the outer try-catch
+    console.log("Database connected successfully");
+
+    const PORT = process.env.PORT || 6000;
+    console.log(`Attempting to start server on port ${PORT}`);
+
+    const server = app.listen(PORT, () => {
+      console.log(`✅ Server successfully running on port ${PORT}`);
+      console.log(`📍 Test it at: http://localhost:${PORT}`);
     });
 
-    app.listen(process.env.PORT || 6000, () => {
-      console.log(`Server running on port ${process.env.PORT || 6000}`);
+    server.on("error", (error) => {
+      console.error("❌ Server error:", error);
+      if (error.code === "EADDRINUSE") {
+        console.error(`Port ${PORT} is already in use`);
+      }
     });
   } catch (error) {
-    console.error("Error starting server:", error);
+    console.error("❌ Error starting server:", error);
+    console.error("Stack trace:", error.stack);
   }
 };
 
 startServer();
-// console.log("Server is running...");
-
-// writing authentication apis - login, logout and register, and also writing the user model and the user controller to handle the logic for these apis.

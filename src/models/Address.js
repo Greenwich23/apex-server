@@ -1,3 +1,4 @@
+// models/Address.js
 import mongoose, { Schema } from "mongoose";
 
 const addressSchema = new Schema(
@@ -6,6 +7,7 @@ const addressSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
+      index: true,
     },
 
     label: {
@@ -23,6 +25,7 @@ const addressSchema = new Schema(
     phone: {
       type: String,
       required: [true, "Phone number is required"],
+      trim: true,
     },
 
     street: {
@@ -60,9 +63,30 @@ const addressSchema = new Schema(
       type: Boolean,
       default: false,
     },
+
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
   },
   { timestamps: true },
 );
+
+// ✅ Indexes
+addressSchema.index({ user: 1, isDefault: 1 });
+addressSchema.index({ user: 1, createdAt: -1 });
+
+// ✅ Virtual for formatted full address
+addressSchema.virtual("fullAddress").get(function () {
+  const parts = [
+    this.street,
+    `${this.city}, ${this.state} ${this.zipCode}`,
+    this.country,
+  ].filter(Boolean);
+  return parts.join(", ");
+});
+
+// ✅ NO pre-save or post-save hooks - handle everything in controller
 
 const Address = mongoose.model("Address", addressSchema);
 export default Address;

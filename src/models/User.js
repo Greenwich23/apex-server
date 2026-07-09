@@ -1,3 +1,4 @@
+// models/User.js
 import mongoose, { Schema } from "mongoose";
 import bcrypt from "bcryptjs";
 
@@ -26,7 +27,6 @@ const userSchema = new Schema(
       type: String,
       minlength: [8, "Password must be at least 8 characters"],
       maxLength: [80, "Password too long"],
-      // not required at top level because Google/Facebook users won't have one
     },
 
     phone: {
@@ -36,7 +36,7 @@ const userSchema = new Schema(
     },
 
     avatar: {
-      type: String, // URL from Cloudinary/S3
+      type: String,
       default: null,
     },
 
@@ -52,16 +52,23 @@ const userSchema = new Schema(
       default: "local",
     },
 
-    // for Google/Facebook login — stores their provider ID
     providerId: {
       type: String,
       default: null,
     },
 
+    // ✅ Wishlist - array of product IDs
     wishlist: {
       type: [Schema.Types.ObjectId],
       ref: "Product",
       default: [],
+    },
+
+    // ✅ Default Address Reference
+    defaultAddress: {
+      type: Schema.Types.ObjectId,
+      ref: "Address",
+      default: null,
     },
 
     loyaltyPoints: {
@@ -77,10 +84,9 @@ const userSchema = new Schema(
 
     isActive: {
       type: Boolean,
-      default: true, // admin can deactivate accounts
+      default: true,
     },
 
-    // for "forgot password" flow
     passwordResetToken: {
       type: String,
       default: null,
@@ -91,7 +97,6 @@ const userSchema = new Schema(
       default: null,
     },
 
-    // for OTP login/verification
     otp: {
       code: { type: String, default: null },
       expiresAt: { type: Date, default: null },
@@ -103,22 +108,48 @@ const userSchema = new Schema(
     },
   },
   {
-    timestamps: true, // adds createdAt and updatedAt automatically
+    timestamps: true,
   },
 );
 
-// hash password before saving
+// Hash password before saving
 userSchema.pre("save", async function () {
   if (!this.isModified("password") || !this.password) return;
   this.password = await bcrypt.hash(this.password, 12);
 });
 
-// compare entered password with hashed one
+// Compare entered password with hashed one
 userSchema.methods.comparePassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
-// don't send password, otp, or reset tokens in any response
+// ✅ Virtual to get all addresses
+userSchema.virtual("addresses", {
+  ref: "Address",
+  localField: "_id",
+  foreignField: "user",
+  justOne: false,
+});
+
+// ✅ Method to get default address
+userSchema.methods.getDefaultAddress = async function () {
+  if (this.defaultAddress) {
+    const Address = mongoose.model("Address");
+    return await Address.findById(this.defaultAddress);
+  }
+  return null;
+};
+
+// ✅ Method to get all user addresses
+userSchema.methods.getAddresses = async function () {
+  const Address = mongoose.model("Address");
+  return await Address.find({
+    user: this._id,
+    isActive: true,
+  }).sort({ isDefault: -1, createdAt: -1 });
+};
+
+// Don't send password, otp, or reset tokens in any response
 userSchema.methods.toJSON = function () {
   const user = this.toObject();
   delete user.password;

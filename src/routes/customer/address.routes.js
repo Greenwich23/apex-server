@@ -1,3 +1,4 @@
+// routes/address.routes.js
 import express from "express";
 import {
   getAddresses,
@@ -14,6 +15,7 @@ import {
 
 const router = express.Router();
 
+// All routes require authentication
 router.use(protect);
 
 router.get("/", getAddresses);

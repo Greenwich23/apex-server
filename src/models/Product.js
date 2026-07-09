@@ -1,3 +1,4 @@
+// models/Product.js
 import mongoose, { Schema } from "mongoose";
 
 const productSchema = new Schema(
@@ -29,13 +30,14 @@ const productSchema = new Schema(
 
     discountPrice: {
       type: Number,
-      default: null, // set if product is on sale
+      default: null,
     },
 
+    // 🔥 REFERENCES to other collections
     category: {
       type: Schema.Types.ObjectId,
       ref: "Category",
-      required: true,
+      required: [true, "Category is required"],
     },
 
     brand: {
@@ -52,17 +54,10 @@ const productSchema = new Schema(
       },
     ],
 
-    videos: [
-      {
-        url: { type: String },
-        title: { type: String },
-      },
-    ],
-
     specifications: [
       {
-        key: { type: String }, // e.g. "Weight Capacity"
-        value: { type: String }, // e.g. "150kg"
+        key: { type: String },
+        value: { type: String },
       },
     ],
 
@@ -84,19 +79,24 @@ const productSchema = new Schema(
     },
 
     tags: {
-      type: [String], // e.g. ["yoga", "cardio", "gym"]
+      type: [String],
       default: [],
     },
 
-    fitnessGoals: {
-      type: [String], // e.g. ["strength", "flexibility"]
-      default: [],
-    },
+    // 🔥 REFERENCES to other collections
+    fitnessGoals: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "FitnessGoal",
+      },
+    ],
 
-    sportsType: {
-      type: [String], // e.g. ["running", "cycling"]
-      default: [],
-    },
+    sportsType: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "Sport",
+      },
+    ],
 
     stock: {
       type: Number,
@@ -112,7 +112,7 @@ const productSchema = new Schema(
     },
 
     manualUrl: {
-      type: String, // downloadable PDF URL
+      type: String,
       default: null,
     },
 
@@ -141,8 +141,9 @@ const productSchema = new Schema(
   { timestamps: true },
 );
 
-// simple text index so search works across name, description, tags
+// Indexes for search
 productSchema.index({ name: "text", description: "text", tags: "text" });
+productSchema.index({ category: 1, brand: 1 });
 
 const Product = mongoose.model("Product", productSchema);
 export default Product;
