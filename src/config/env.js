@@ -2,10 +2,6 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-// ─── helper ───────────────────────────────────────────────────────────────────
-// throws early at startup if a required variable is missing
-// so you find out immediately rather than getting a cryptic error later
-
 const required = (key) => {
   const value = process.env[key];
   if (!value) {
