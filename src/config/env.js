@@ -120,7 +120,7 @@ const validateEnv = () => {
     console.error("\n❌ Environment validation failed:\n");
     errors.forEach((e) => console.error(e));
     console.error(
-      "\nPlease check your .env file and make sure all required variables are set.\n"
+      "\nPlease check your .env file and make sure all required variables are set.\n",
     );
     process.exit(1); // stop the server — don't run with broken config
   }
@@ -131,42 +131,3 @@ const validateEnv = () => {
 };
 
 validateEnv();
-
-// ─── EXAMPLE .env ─────────────────────────────────────────────────────────────
-/*
-  Copy everything below into a .env file in the root of apex-server
-  and fill in your own values. Never commit .env to git.
-
-  NODE_ENV=development
-  PORT=5000
-
-  MONGO_URI=mongodb://localhost:27017/apexdb
-
-  JWT_SECRET=your_super_secret_jwt_key_here
-  JWT_EXPIRES_IN=7d
-  JWT_REFRESH_SECRET=your_refresh_secret_here
-
-  CUSTOMER_URL=http://localhost:3000
-  ADMIN_URL=http://localhost:3001
-
-  CLOUDINARY_CLOUD_NAME=your_cloud_name
-  CLOUDINARY_API_KEY=your_api_key
-  CLOUDINARY_API_SECRET=your_api_secret
-
-  EMAIL_HOST=smtp.gmail.com
-  EMAIL_PORT=587
-  EMAIL_USER=your@gmail.com
-  EMAIL_PASS=your_gmail_app_password
-
-  TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-  TWILIO_AUTH_TOKEN=your_auth_token
-  TWILIO_PHONE_NUMBER=+12015551234
-
-  STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxxxxxxxxx
-  STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxxxxxxxxxxxx
-
-  RAZORPAY_KEY_ID=rzp_test_xxxxxxxxxxxxxxxx
-  RAZORPAY_KEY_SECRET=your_razorpay_secret
-
-  CURRENCY=NGN
-*/
