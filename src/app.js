@@ -24,6 +24,7 @@ app.use(
     origin: [
       process.env.CUSTOMER_URL || "http://localhost:5173",
       process.env.ADMIN_URL || "http://localhost:3001",
+      "https://apexsportsfitness.netlify.app/",
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
