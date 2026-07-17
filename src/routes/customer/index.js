@@ -13,8 +13,10 @@ import orderRoutes from "./order.routes.js";
 import paymentRoutes from "./payment.routes.js"; // ← this was missing
 import couponRoutes from "./coupon.routes.js";
 import contactRoutes from "./contact.routes.js";
-// import returnRoutes from "./return.routes.js";
-// import supportRoutes from "./support.routes.js";
+import returnRoutes from "./return.routes.js";
+import supportRoutes from "./support.routes.js";
+import reviewRoutes from "./review.routes.js";
+import newsletterRoutes from "./newsletter.routes.js";
 
 const router = express.Router();
 
@@ -35,10 +37,11 @@ router.use("/orders", orderRoutes);
 router.use("/payments", paymentRoutes); // ← this was missing
 router.use("/coupons", couponRoutes);
 router.use("/contact", contactRoutes);
+router.use("/tickets", supportRoutes);
+router.use("/returns", returnRoutes);
+router.use("/reviews", reviewRoutes);
+router.use("/newsletter", newsletterRoutes);
 
 // app.js or server.js
-
-// router.use("/returns", returnRoutes);
-// router.use("/support", supportRoutes);
 
 export default router;

@@ -4,6 +4,24 @@ import ProductVariant from "../../models/ProductVariant.js";
 import { successResponse, errorResponse } from "../../utils/apiResponse.js";
 import slugify from "slugify";
 
+// ✅ Helper function to safely parse JSON
+const safeJsonParse = (value, fallback = null) => {
+  if (!value) return fallback;
+  if (typeof value === "object") return value;
+  if (typeof value === "string") {
+    try {
+      const trimmed = value.trim();
+      if (trimmed === "" || trimmed === "null" || trimmed === "undefined") {
+        return fallback;
+      }
+      return JSON.parse(trimmed);
+    } catch (e) {
+      return value;
+    }
+  }
+  return fallback;
+};
+
 // GET /api/admin/products
 export const getAllProducts = async (req, res) => {
   try {
@@ -114,14 +132,30 @@ export const createProduct = async (req, res) => {
       return errorResponse(res, "A product with this name already exists", 400);
     }
 
-    const imageArray =
-      images && Array.isArray(images)
-        ? images.map((url, index) => ({
-            url: url,
-            altText: name,
-            isPrimary: index === 0,
-          }))
-        : [];
+    // ✅ Handle images from both sources
+    let imageArray = [];
+
+    if (req.files && req.files.length > 0) {
+      imageArray = req.files.map((file, index) => ({
+        url: file.path,
+        altText: name,
+        isPrimary: index === 0,
+      }));
+    } else if (images && Array.isArray(images)) {
+      imageArray = images.map((url, index) => ({
+        url: url,
+        altText: name,
+        isPrimary: index === 0,
+      }));
+    }
+
+    // ✅ SAFELY parse JSON fields
+    const parsedSpecifications = safeJsonParse(specifications, []);
+    const parsedDimensions = safeJsonParse(dimensions, undefined);
+    const parsedWeight = safeJsonParse(weight, undefined);
+    const parsedTags = safeJsonParse(tags, []);
+    const parsedFitnessGoals = safeJsonParse(fitnessGoals, []);
+    const parsedSportsType = safeJsonParse(sportsType, []);
 
     const product = await Product.create({
       name,
@@ -132,20 +166,19 @@ export const createProduct = async (req, res) => {
       category,
       brand: brand || null,
       images: imageArray,
-      specifications: specifications || [],
+      specifications: parsedSpecifications,
       material: material || null,
-      dimensions: dimensions || undefined,
-      weight: weight || undefined,
-      tags: tags || [],
-      fitnessGoals: fitnessGoals || [],
-      sportsType: sportsType || [],
+      dimensions: parsedDimensions,
+      weight: parsedWeight,
+      tags: parsedTags,
+      fitnessGoals: parsedFitnessGoals,
+      sportsType: parsedSportsType,
       stock: Number(stock) || 0,
       sku: sku || null,
       isFeatured: isFeatured === "true" || isFeatured === true || false,
       isActive: true,
     });
 
-    // Populate the created product
     const populatedProduct = await Product.findById(product._id)
       .populate("category", "name slug")
       .populate("brand", "name slug")
@@ -201,14 +234,28 @@ export const createProductWithVariants = async (req, res) => {
       return errorResponse(res, "A product with this name already exists", 400);
     }
 
-    const imageArray =
-      images && Array.isArray(images)
-        ? images.map((url, index) => ({
-            url: url,
-            altText: name,
-            isPrimary: index === 0,
-          }))
-        : [];
+    let imageArray = [];
+
+    if (req.files && req.files.length > 0) {
+      imageArray = req.files.map((file, index) => ({
+        url: file.path,
+        altText: name,
+        isPrimary: index === 0,
+      }));
+    } else if (images && Array.isArray(images)) {
+      imageArray = images.map((url, index) => ({
+        url: url,
+        altText: name,
+        isPrimary: index === 0,
+      }));
+    }
+
+    const parsedSpecifications = safeJsonParse(specifications, []);
+    const parsedDimensions = safeJsonParse(dimensions, undefined);
+    const parsedWeight = safeJsonParse(weight, undefined);
+    const parsedTags = safeJsonParse(tags, []);
+    const parsedFitnessGoals = safeJsonParse(fitnessGoals, []);
+    const parsedSportsType = safeJsonParse(sportsType, []);
 
     const product = await Product.create({
       name,
@@ -219,13 +266,13 @@ export const createProductWithVariants = async (req, res) => {
       category,
       brand: brand || null,
       images: imageArray,
-      specifications: specifications || [],
+      specifications: parsedSpecifications,
       material: material || null,
-      dimensions: dimensions || undefined,
-      weight: weight || undefined,
-      tags: tags || [],
-      fitnessGoals: fitnessGoals || [],
-      sportsType: sportsType || [],
+      dimensions: parsedDimensions,
+      weight: parsedWeight,
+      tags: parsedTags,
+      fitnessGoals: parsedFitnessGoals,
+      sportsType: parsedSportsType,
       stock: Number(stock) || 0,
       sku: sku || null,
       isFeatured: isFeatured === "true" || isFeatured === true || false,
@@ -290,6 +337,26 @@ export const updateProduct = async (req, res) => {
     if (updates.discountPrice)
       updates.discountPrice = Number(updates.discountPrice);
     if (updates.stock !== undefined) updates.stock = Number(updates.stock);
+
+    // ✅ SAFELY parse JSON fields for update
+    if (updates.specifications) {
+      updates.specifications = safeJsonParse(updates.specifications, []);
+    }
+    if (updates.dimensions) {
+      updates.dimensions = safeJsonParse(updates.dimensions, undefined);
+    }
+    if (updates.weight) {
+      updates.weight = safeJsonParse(updates.weight, undefined);
+    }
+    if (updates.tags) {
+      updates.tags = safeJsonParse(updates.tags, []);
+    }
+    if (updates.fitnessGoals) {
+      updates.fitnessGoals = safeJsonParse(updates.fitnessGoals, []);
+    }
+    if (updates.sportsType) {
+      updates.sportsType = safeJsonParse(updates.sportsType, []);
+    }
 
     const updated = await Product.findByIdAndUpdate(req.params.id, updates, {
       new: true,

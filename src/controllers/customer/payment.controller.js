@@ -7,6 +7,7 @@ import ShipmentTracking from "../../models/ShipmentTracking.js";
 import { successResponse, errorResponse } from "../../utils/apiResponse.js";
 import logger from "../../utils/logger.js";
 import dotenv from "dotenv";
+import axios from "axios";
 dotenv.config();
 
 // ─── provider instances ───────────────────────────────────────────────────────
@@ -285,5 +286,182 @@ export const getPaymentStatus = async (req, res) => {
     return successResponse(res, "Payment status fetched", { payment });
   } catch (error) {
     return errorResponse(res, error.message);
+  }
+};
+
+// controllers/customer/payment.controller.js
+
+// ─── PAYSTACK ───────────────────────────────────────────────────────────────────
+
+// POST /api/payments/paystack/initialize
+// Initialize a Paystack transaction
+export const initializePaystackPayment = async (req, res) => {
+  try {
+    const { orderId } = req.body;
+
+    const order = await Order.findOne({ _id: orderId, user: req.user.id });
+    if (!order) return errorResponse(res, "Order not found", 404);
+
+    if (order.paymentStatus === "paid") {
+      return errorResponse(res, "This order has already been paid", 400);
+    }
+
+    // Initialize Paystack transaction
+    const response = await axios.post(
+      "https://api.paystack.co/transaction/initialize",
+      {
+        email: req.user.email,
+        amount: Math.round(order.total * 100), // Paystack uses kobo (1/100 of NGN)
+        reference: `ORDER-${order._id.toString().slice(-8)}-${Date.now()}`,
+        callback_url: `${process.env.CUSTOMER_URL}/payment/callback`,
+        metadata: {
+          orderId: order._id.toString(),
+          userId: req.user.id.toString(),
+          cancel_action: `${process.env.CUSTOMER_URL}/payment/cancelled`,
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    if (!response.data.status) {
+      return errorResponse(
+        res,
+        response.data.message || "Failed to initialize payment",
+        400,
+      );
+    }
+
+    // Record pending payment
+    await Payment.create({
+      order: order._id,
+      user: req.user.id,
+      provider: "paystack",
+      providerPaymentId: response.data.data.reference,
+      amount: order.total,
+      currency: "NGN",
+      status: "pending",
+    });
+
+    return successResponse(res, "Paystack payment initialized", {
+      authorizationUrl: response.data.data.authorization_url,
+      reference: response.data.data.reference,
+    });
+  } catch (error) {
+    logger.error("Paystack initialize error", error);
+    return errorResponse(
+      res,
+      error.message || "Failed to initialize Paystack payment",
+    );
+  }
+};
+
+// GET /api/payments/paystack/verify/:reference
+// Verify a Paystack transaction after payment
+export const verifyPaystackPayment = async (req, res) => {
+  try {
+    const { reference } = req.params;
+
+    // Verify transaction with Paystack
+    const response = await axios.get(
+      `https://api.paystack.co/transaction/verify/${reference}`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    if (!response.data.status) {
+      return errorResponse(
+        res,
+        response.data.message || "Payment verification failed",
+        400,
+      );
+    }
+
+    const transaction = response.data.data;
+
+    // Check if payment was successful
+    if (transaction.status !== "success") {
+      return errorResponse(res, `Payment status: ${transaction.status}`, 400);
+    }
+
+    // Find the order ID from metadata
+    const orderId = transaction.metadata?.orderId;
+    if (!orderId) {
+      return errorResponse(
+        res,
+        "Order ID not found in transaction metadata",
+        400,
+      );
+    }
+
+    // Confirm the payment
+    await confirmPayment(orderId, transaction.reference, "paystack");
+
+    return successResponse(res, "Payment verified successfully", {
+      transaction,
+    });
+  } catch (error) {
+    logger.error("Paystack verify error", error);
+    return errorResponse(
+      res,
+      error.message || "Failed to verify Paystack payment",
+    );
+  }
+};
+
+// POST /api/payments/paystack/webhook
+// Paystack webhook handler for payment events
+export const paystackWebhook = async (req, res) => {
+  try {
+    // Verify webhook signature
+    const signature = req.headers["x-paystack-signature"];
+    const hash = crypto
+      .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY)
+      .update(JSON.stringify(req.body))
+      .digest("hex");
+
+    if (hash !== signature) {
+      logger.warn("Paystack webhook signature verification failed");
+      return res.status(401).json({ status: "Unauthorized" });
+    }
+
+    const event = req.body;
+
+    // Handle different event types
+    switch (event.event) {
+      case "charge.success":
+        const transaction = event.data;
+        const orderId = transaction.metadata?.orderId;
+
+        if (orderId) {
+          await confirmPayment(orderId, transaction.reference, "paystack");
+          logger.info(`Paystack payment confirmed for order ${orderId}`);
+        }
+        break;
+
+      case "charge.failed":
+        logger.warn(`Paystack charge failed: ${event.data.reference}`);
+        break;
+
+      case "charge.pending":
+        logger.info(`Paystack charge pending: ${event.data.reference}`);
+        break;
+
+      default:
+        logger.info(`Paystack webhook event: ${event.event}`);
+    }
+
+    return res.status(200).json({ received: true });
+  } catch (error) {
+    logger.error("Paystack webhook error:", error);
+    return res.status(200).json({ received: true }); // Still return 200 to prevent retries
   }
 };

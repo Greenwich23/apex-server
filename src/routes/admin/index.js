@@ -13,8 +13,16 @@ import fitnessGoalRoutes from "./fitnessGoal.routes.js";
 import sportRoutes from "./sport.routes.js";
 import categoryRoutes from "./category.routes.js";
 import brandRoutes from "./brand.routes.js";
+import ticketRoutes from "./tickets.routes.js";
+import deliveryRoutes from "./delivery.routes.js";
+import refundRoutes from "./refund.routes.js";
+import notificationRoutes from "./notification.routes.js";
+import reviewRoutes from "../../routes/admin/reviews.routes.js";
 
 const router = express.Router();
+
+router.use("/delivery", deliveryRoutes);
+router.use("/returns", returnRoutes);
 
 // ✅ Apply authentication and admin check to ALL admin routes
 // This ensures every route in this file requires admin privileges
@@ -27,11 +35,14 @@ router.use("/products", productRoutes);
 router.use("/orders", orderRoutes);
 router.use("/coupons", couponRoutes);
 router.use("/customers", customerRoutes);
-router.use("/returns", returnRoutes);
 router.use("/support", ticketsRoutes);
 router.use("/fitnessGoals", fitnessGoalRoutes);
 router.use("/sports", sportRoutes);
 router.use("/categories", categoryRoutes);
 router.use("/brands", brandRoutes);
+router.use("/tickets", ticketRoutes);
+router.use("/refund", refundRoutes);
+router.use("/notifications", notificationRoutes);
+router.use("/reviews", reviewRoutes);
 
 export default router;

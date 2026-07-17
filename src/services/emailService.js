@@ -269,9 +269,17 @@ export const sendPasswordResetEmail = async (
 /**
  * 🆕 Send Order Confirmation Email
  */
+// services/emailService.js
+
+/**
+ * 🆕 Send Order Confirmation Email
+ */
 export const sendOrderConfirmationEmail = async (order, user) => {
   try {
     const transporter = createTransporter();
+
+    // ✅ Convert ObjectId to string before using slice
+    const orderId = order._id.toString().slice(-8).toUpperCase();
 
     const orderDate = new Date(order.createdAt).toLocaleDateString("en-US", {
       weekday: "long",
@@ -310,7 +318,7 @@ export const sendOrderConfirmationEmail = async (order, user) => {
     const mailOptions = {
       from: `"Apex Store" <${process.env.EMAIL_USER}>`,
       to: user.email,
-      subject: `🎯 Order Confirmed! #${order._id.slice(-8).toUpperCase()}`,
+      subject: `🎯 Order Confirmed! #${orderId}`,
       html: `
         <!DOCTYPE html>
         <html>
@@ -339,7 +347,7 @@ export const sendOrderConfirmationEmail = async (order, user) => {
                 <table width="100%" cellpadding="0" cellspacing="0">
                   <tr>
                     <td style="padding: 6px 0;"><span style="color: #6B7280; font-size: 14px;">Order Number</span></td>
-                    <td style="padding: 6px 0; text-align: right; font-weight: 600; color: #0A2540; font-size: 14px;">#${order._id.slice(-8).toUpperCase()}</td>
+                    <td style="padding: 6px 0; text-align: right; font-weight: 600; color: #0A2540; font-size: 14px;">#${orderId}</td>
                   </tr>
                   <tr>
                     <td style="padding: 6px 0;"><span style="color: #6B7280; font-size: 14px;">Date Placed</span></td>
@@ -441,7 +449,7 @@ export const sendOrderConfirmationEmail = async (order, user) => {
             <!-- Button -->
             <tr>
               <td style="text-align: center; padding-top: 24px;">
-                <a href="${process.env.FRONTEND_URL || "http://localhost:5173"}/orders/${order._id}" style="display: inline-block; padding: 12px 32px; background: #0A2540; color: white; text-decoration: none; border-radius: 8px; font-weight: 600;">View Order Details</a>
+                <a href="${process.env.CUSTOMER_URL || "http://localhost:5173"}/orders/${order._id}" style="display: inline-block; padding: 12px 32px; background: #0A2540; color: white; text-decoration: none; border-radius: 8px; font-weight: 600;">View Order Details</a>
               </td>
             </tr>
 
@@ -460,7 +468,7 @@ export const sendOrderConfirmationEmail = async (order, user) => {
 
     const info = await transporter.sendMail(mailOptions);
     logger.info(
-      `✅ Order confirmation email sent to ${user.email} for order #${order._id}`,
+      `✅ Order confirmation email sent to ${user.email} for order #${orderId}`,
     );
     console.log(`📧 Order confirmation email sent to ${user.email}`);
     return info;
@@ -683,6 +691,687 @@ export const sendContactEmail = async ({ name, email, subject, message }) => {
   }
 };
 
+// src/services/emailService.js
+// Add this function after your existing functions
+
+/**
+ * 🚚 Send Delivery Assignment Email to Delivery Agent
+ */
+export const sendDeliveryAssignmentEmail = async (
+  agentEmail,
+  agentName,
+  data,
+) => {
+  try {
+    const transporter = createTransporter();
+
+    const {
+      orderId,
+      customerName,
+      deliveryAddress,
+      deliveryLink,
+      orderTotal,
+      items,
+      customerPhone,
+      specialInstructions,
+    } = data;
+
+    // Generate items HTML
+    const itemsHTML =
+      items && items.length > 0
+        ? items
+            .map(
+              (item) => `
+          <tr>
+            <td style="padding: 8px 12px; border-bottom: 1px solid #E5E7EB;">
+              ${item.name || item.product?.name || "Item"}
+            </td>
+            <td style="padding: 8px 12px; border-bottom: 1px solid #E5E7EB; text-align: center;">
+              ${item.quantity || 1}
+            </td>
+            <td style="padding: 8px 12px; border-bottom: 1px solid #E5E7EB; text-align: right;">
+              ₦${((item.price || 0) * (item.quantity || 1)).toLocaleString()}
+            </td>
+          </tr>
+        `,
+            )
+            .join("")
+        : "";
+
+    const mailOptions = {
+      from: `"Apex Store" <${process.env.EMAIL_USER}>`,
+      to: agentEmail,
+      subject: `🚚 New Delivery Assignment - Order #${orderId}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>New Delivery Assignment</title>
+          <style>
+            @media only screen and (max-width: 600px) {
+              .container { padding: 20px !important; }
+              .btn { display: block !important; width: 100% !important; }
+            }
+          </style>
+        </head>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #F8FAFC; margin: 0; padding: 40px 20px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background: #FFFFFF; border-radius: 16px; padding: 40px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);">
+            <!-- Header -->
+            <tr>
+              <td style="text-align: center; padding-bottom: 24px; border-bottom: 2px solid #F0F4FA;">
+                <h1 style="font-size: 28px; font-weight: 800; color: #0A2540; margin: 0;">APEX<span style="color: #FF6B00;">.</span></h1>
+                <p style="color: #6B7280; font-size: 14px; margin: 4px 0 0;">Delivery Management</p>
+              </td>
+            </tr>
+
+            <!-- Greeting -->
+            <tr>
+              <td style="padding: 24px 0 16px;">
+                <p style="font-size: 18px; font-weight: 600; color: #0A2540; margin: 0 0 4px;">Hello ${agentName || "Agent"},</p>
+                <p style="color: #4A6A8A; font-size: 16px; margin: 0;">You have been assigned a new delivery. Please review the details below.</p>
+              </td>
+            </tr>
+
+            <!-- Quick Actions -->
+            <tr>
+              <td style="padding: 16px 0;">
+                <div style="background: #F0F6FF; border-radius: 12px; padding: 20px; text-align: center; border: 1px solid #D6E4FF;">
+                  <p style="margin: 0 0 12px; font-weight: 600; color: #0A2540;">📱 Update Delivery Status</p>
+                  <a href="${deliveryLink}" style="display: inline-block; padding: 14px 32px; background: #0A2540; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
+                    Click to Update Status →
+                  </a>
+                  <p style="margin: 8px 0 0; font-size: 12px; color: #6B7280;">This link is unique to this delivery</p>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Order Details -->
+            <tr>
+              <td>
+                <h2 style="font-size: 16px; font-weight: 700; color: #0A2540; margin: 16px 0 12px;">📋 Order Details</h2>
+                <div style="background: #F8FAFC; border-radius: 12px; padding: 16px 20px;">
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="padding: 4px 0; color: #6B7280; font-size: 14px;">Order Number</td>
+                      <td style="padding: 4px 0; text-align: right; font-weight: 600; color: #0A2540; font-size: 14px;">#${orderId}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 4px 0; color: #6B7280; font-size: 14px;">Customer</td>
+                      <td style="padding: 4px 0; text-align: right; font-weight: 600; color: #0A2540; font-size: 14px;">${customerName || "N/A"}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 4px 0; color: #6B7280; font-size: 14px;">Phone</td>
+                      <td style="padding: 4px 0; text-align: right; font-weight: 600; color: #0A2540; font-size: 14px;">${customerPhone || "N/A"}</td>
+                    </tr>
+                    ${
+                      orderTotal
+                        ? `
+                    <tr>
+                      <td style="padding: 4px 0; color: #6B7280; font-size: 14px;">Order Total</td>
+                      <td style="padding: 4px 0; text-align: right; font-weight: 700; color: #FF6B00; font-size: 16px;">₦${orderTotal.toLocaleString()}</td>
+                    </tr>
+                    `
+                        : ""
+                    }
+                  </table>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Delivery Address -->
+            <tr>
+              <td>
+                <h2 style="font-size: 16px; font-weight: 700; color: #0A2540; margin: 16px 0 12px;">📍 Delivery Address</h2>
+                <div style="background: #F8FAFC; border-radius: 12px; padding: 16px 20px;">
+                  <p style="margin: 2px 0; color: #0A2540; font-size: 15px; font-weight: 500;">${deliveryAddress?.fullName || "N/A"}</p>
+                  <p style="margin: 2px 0; color: #4A6A8A; font-size: 14px;">${deliveryAddress?.street || deliveryAddress?.address || "N/A"}</p>
+                  <p style="margin: 2px 0; color: #4A6A8A; font-size: 14px;">${deliveryAddress?.city || ""} ${deliveryAddress?.state || ""} ${deliveryAddress?.zipCode || deliveryAddress?.postalCode || ""}</p>
+                  <p style="margin: 2px 0; color: #4A6A8A; font-size: 14px;">${deliveryAddress?.country || "Nigeria"}</p>
+                  ${deliveryAddress?.phone ? `<p style="margin: 4px 0 0; color: #0A2540; font-size: 14px;">📞 ${deliveryAddress.phone}</p>` : ""}
+                  ${specialInstructions ? `<p style="margin: 8px 0 0; color: #6B7280; font-size: 13px; font-style: italic;">📝 ${specialInstructions}</p>` : ""}
+                </div>
+              </td>
+            </tr>
+
+            <!-- Order Items -->
+            ${
+              items && items.length > 0
+                ? `
+            <tr>
+              <td>
+                <h2 style="font-size: 16px; font-weight: 700; color: #0A2540; margin: 16px 0 12px;">📦 Items to Deliver</h2>
+                <div style="background: #F8FAFC; border-radius: 12px; overflow: hidden;">
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <thead>
+                      <tr style="background: #E8EDF5;">
+                        <th style="padding: 10px 12px; text-align: left; font-size: 12px; color: #4A6A8A; text-transform: uppercase; letter-spacing: 0.5px;">Item</th>
+                        <th style="padding: 10px 12px; text-align: center; font-size: 12px; color: #4A6A8A; text-transform: uppercase; letter-spacing: 0.5px;">Qty</th>
+                        <th style="padding: 10px 12px; text-align: right; font-size: 12px; color: #4A6A8A; text-transform: uppercase; letter-spacing: 0.5px;">Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${itemsHTML}
+                    </tbody>
+                  </table>
+                </div>
+              </td>
+            </tr>
+            `
+                : ""
+            }
+
+            <!-- Important Notes -->
+            <tr>
+              <td>
+                <div style="background: #FFF8E6; border-radius: 12px; padding: 16px 20px; margin: 20px 0; border-left: 4px solid #FFB800;">
+                  <p style="margin: 0; font-size: 14px; color: #7A6A00;">
+                    <strong>📌 Important:</strong>
+                  </p>
+                  <ul style="margin: 4px 0; padding-left: 20px; color: #7A6A00; font-size: 13px;">
+                    <li>Use the link above to update delivery status</li>
+                    <li>Take a photo as proof of delivery when delivered</li>
+                    <li>Contact customer if you have any issues</li>
+                  </ul>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Action Buttons -->
+            <tr>
+              <td style="text-align: center; padding-top: 12px;">
+                <a href="${deliveryLink}" style="display: inline-block; padding: 14px 40px; background: #FF6B00; color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 16px; transition: all 0.2s;">
+                  🚚 Update Delivery Status
+                </a>
+                <p style="color: #9CA3AF; font-size: 12px; margin: 8px 0 0;">
+                  Click the button above to update the delivery status in real-time
+                </p>
+              </td>
+            </tr>
+
+            <!-- Footer -->
+            <tr>
+              <td style="text-align: center; margin-top: 32px; padding-top: 24px; border-top: 2px solid #F0F4FA;">
+                <p style="color: #9CA3AF; font-size: 13px; margin: 4px 0;">
+                  Questions? Contact support at 
+                  <a href="mailto:support@apexstore.com" style="color: #0A2540; text-decoration: none; font-weight: 600;">support@apexstore.com</a>
+                </p>
+                <p style="color: #9CA3AF; font-size: 12px; margin: 4px 0;">
+                  © ${new Date().getFullYear()} APEX Store. All rights reserved.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
+      `,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    logger.info(
+      `✅ Delivery assignment email sent to ${agentEmail} for order #${orderId}`,
+    );
+    console.log(`📧 Delivery assignment email sent to ${agentEmail}`);
+    return info;
+  } catch (error) {
+    console.error("❌ Failed to send delivery assignment email:", error);
+    logger.error(
+      `Failed to send delivery assignment email to ${agentEmail}:`,
+      error.message,
+    );
+    throw new Error(
+      "Failed to send delivery assignment email. Please try again.",
+    );
+  }
+};
+
+// services/emailService.js - Add these functions
+
+// ─── Send Return Approved Email ─────────────────────────────────────────────
+
+export const sendReturnApprovedEmail = async (email, data) => {
+  try {
+    const transporter = createTransporter();
+
+    const mailOptions = {
+      from: `"Apex Store" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: `✅ Return Request Approved - Order #${data.orderId}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Return Approved</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px;">
+          <div style="max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px;">
+            <h2 style="color: #10b981;">✅ Return Request Approved</h2>
+            <p style="color: #666;">Your return request for order #${data.orderId} has been approved.</p>
+            <p style="color: #666;">A delivery agent will be assigned to pick up your item shortly.</p>
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Return ID:</strong> #${data.returnRequestId}</p>
+              <p><strong>Status:</strong> Approved - Awaiting Pickup</p>
+            </div>
+            <p style="color: #999; font-size: 12px; text-align: center;">
+              You will receive another notification when the pickup is scheduled.
+            </p>
+          </div>
+        </body>
+        </html>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+    logger.info(`✅ Return approved email sent to ${email}`);
+  } catch (error) {
+    logger.error("Failed to send return approved email:", error);
+  }
+};
+
+// ─── Send Refund Notification Email ─────────────────────────────────────────
+
+export const sendRefundNotificationEmail = async (email, data) => {
+  try {
+    const transporter = createTransporter();
+
+    const { orderId, amount, refundStatus, reason, items } = data;
+
+    const itemsList = items
+      .map((item) => `<li>Item x ${item.quantity}</li>`)
+      .join("");
+
+    const isSuccess = refundStatus === "completed";
+
+    const mailOptions = {
+      from: `"Apex Store" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: `${isSuccess ? "💰" : "⏳"} Refund ${isSuccess ? "Completed" : "Processing"} - Order #${orderId}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Refund ${isSuccess ? "Completed" : "Processing"}</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px;">
+          <div style="max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px;">
+            <h2 style="color: ${isSuccess ? "#10b981" : "#f59e0b"};">
+              ${isSuccess ? "💰 Refund Completed!" : "⏳ Refund Processing"}
+            </h2>
+            <p style="color: #666;">Your refund for order #${orderId} is ${isSuccess ? "now complete" : "being processed"}.</p>
+            
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Refund Amount:</strong> ₦${amount.toLocaleString()}</p>
+              <p><strong>Status:</strong> ${refundStatus.toUpperCase()}</p>
+              <p><strong>Reason:</strong> ${reason}</p>
+              ${itemsList ? `<p><strong>Items Returned:</strong></p><ul>${itemsList}</ul>` : ""}
+            </div>
+
+            ${
+              isSuccess
+                ? `
+              <div style="background: #d1fae5; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <p style="color: #065f46; margin: 0;">
+                  ✅ The refund amount of ₦${amount.toLocaleString()} has been credited back to your original payment method.
+                </p>
+                <p style="color: #065f46; font-size: 14px; margin: 8px 0 0;">
+                  ⏰ Please allow 5-10 business days for the refund to appear in your account.
+                </p>
+              </div>
+            `
+                : `
+              <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <p style="color: #92400e; margin: 0;">
+                  ⏳ Your refund is being processed. You will receive a confirmation email once completed.
+                </p>
+              </div>
+            `
+            }
+            
+            <p style="color: #999; font-size: 12px; text-align: center; margin-top: 20px;">
+              Questions? Contact us at support@apexstore.com
+            </p>
+          </div>
+        </body>
+        </html>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+    logger.info(`✅ Refund notification email sent to ${email}`);
+  } catch (error) {
+    logger.error("Failed to send refund notification email:", error);
+  }
+};
+
+// ─── Send Pickup Assignment Email ───────────────────────────────────────────
+
+// services/emailService.js - Updated sendPickupAssignmentEmail
+
+export const sendPickupAssignmentEmail = async (email, agentName, data) => {
+  try {
+    const transporter = createTransporter();
+
+    const { returnRequestId, orderId, customerName, address } = data;
+
+    // ✅ Build the correct pickup link using the returnRequestId
+    const baseUrl = process.env.CUSTOMER_URL || "http://localhost:5173";
+    const pickupLink = `${baseUrl}/delivery/return/${returnRequestId}`;
+
+    const mailOptions = {
+      from: `"Apex Store" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: `📦 New Pickup Assignment - Return #${returnRequestId}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Pickup Assignment</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px;">
+          <div style="max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px;">
+            <h2 style="color: #0a2540;">📦 New Pickup Assignment</h2>
+            <p style="color: #666;">Hello ${agentName},</p>
+            <p style="color: #666;">You have been assigned to pick up a return from a customer.</p>
+            
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Return ID:</strong> #${returnRequestId}</p>
+              <p><strong>Order #:</strong> ${orderId}</p>
+              <p><strong>Customer:</strong> ${customerName}</p>
+              <p><strong>Address:</strong> ${address?.address || address?.street || "N/A"}</p>
+              <p><strong>City:</strong> ${address?.city || "N/A"}</p>
+              <p><strong>State:</strong> ${address?.state || "N/A"}</p>
+              <p><strong>Phone:</strong> ${address?.phone || "N/A"}</p>
+            </div>
+
+            <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b;">
+              <p style="color: #92400e; margin: 0; font-size: 14px;">
+                <strong>📌 Instructions:</strong>
+              </p>
+              <ul style="color: #92400e; font-size: 13px; margin: 4px 0; padding-left: 20px;">
+                <li>Contact the customer to schedule the pickup</li>
+                <li>Inspect the item(s) before picking up</li>
+                <li>Mark the pickup as completed once done</li>
+              </ul>
+            </div>
+
+            <div style="text-align: center; margin: 20px 0;">
+              <a href="${pickupLink}" style="display: inline-block; padding: 14px 40px; background: #0a2540; color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 16px;">
+                📦 View & Update Pickup
+              </a>
+              <p style="color: #9CA3AF; font-size: 12px; margin: 8px 0 0;">
+                Click the button above to update pickup status
+              </p>
+            </div>
+
+            <p style="color: #999; font-size: 12px; text-align: center; margin-top: 20px;">
+              Questions? Contact support at support@apexstore.com
+            </p>
+          </div>
+        </body>
+        </html>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+    logger.info(`✅ Pickup assignment email sent to ${email}`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Failed to send pickup assignment email:", error);
+    logger.error(
+      `Failed to send pickup assignment email to ${email}:`,
+      error.message,
+    );
+    return { success: false, error: error.message };
+  }
+};
+
+// services/emailService.js - Add this function after sendDeliveryAssignmentEmail
+
+// ─── Send Delivery Confirmation Email (for admin verification) ─────────────
+
+export const sendDeliveryConfirmationEmail = async (agentEmail, data) => {
+  try {
+    const transporter = createTransporter();
+
+    const { orderId, status, notes } = data;
+    const isApproved = status === "approved";
+
+    const mailOptions = {
+      from: `"Apex Store" <${process.env.EMAIL_USER}>`,
+      to: agentEmail,
+      subject: `${isApproved ? "✅" : "❌"} Delivery ${isApproved ? "Verified" : "Rejected"} - Order #${orderId}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Delivery ${isApproved ? "Verified" : "Rejected"}</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px;">
+          <div style="max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px;">
+            <h2 style="color: ${isApproved ? "#10b981" : "#ef4444"};">
+              ${isApproved ? "✅ Delivery Verified!" : "❌ Delivery Rejected"}
+            </h2>
+            <p style="color: #666;">Your delivery for order #${orderId} has been ${isApproved ? "verified and approved" : "rejected by admin"}.</p>
+            
+            ${
+              notes
+                ? `<div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Admin Note:</strong> ${notes}</p>
+            </div>`
+                : ""
+            }
+
+            ${
+              !isApproved
+                ? `
+              <div style="background: #fef2f2; padding: 15px; border-radius: 8px; border-left: 4px solid #ef4444; margin: 20px 0;">
+                <p style="color: #dc2626; margin: 0;">
+                  Please re-deliver the order or contact support for more information.
+                </p>
+              </div>
+            `
+                : ""
+            }
+            
+            // <div style="text-align: center; margin: 20px 0;">
+            //   <a href="${process.env.CUSTOMER_URL || "http://localhost:5173"}/orders/${orderId}" style="display: inline-block; padding: 12px 30px; background: #0a2540; color: white; text-decoration: none; border-radius: 6px;">
+            //     View Order
+            //   </a>
+            // </div>
+            
+            <p style="color: #999; font-size: 12px; text-align: center;">
+              Thank you for your delivery service!
+            </p>
+          </div>
+        </body>
+        </html>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+    logger.info(`✅ Delivery confirmation email sent to ${agentEmail}`);
+    return { success: true };
+  } catch (error) {
+    logger.error("Failed to send delivery confirmation email:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+// services/emailService.js
+
+// ─── Send Delivery Verification Result Email to Driver ─────────────────────
+
+export const sendDeliveryVerificationResultEmail = async (
+  driverEmail,
+  data,
+) => {
+  try {
+    const transporter = createTransporter();
+
+    const { orderId, status, adminNote, customerName } = data;
+    const isApproved = status === "approved";
+
+    const mailOptions = {
+      from: `"Apex Store" <${process.env.EMAIL_USER}>`,
+      to: driverEmail,
+      subject: `${isApproved ? "✅" : "❌"} Delivery ${isApproved ? "Verified" : "Rejected"} - Order #${orderId}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Delivery ${isApproved ? "Verified" : "Rejected"}</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px;">
+          <div style="max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px;">
+            <h2 style="color: ${isApproved ? "#10b981" : "#ef4444"};">
+              ${isApproved ? "✅ Delivery Verified!" : "❌ Delivery Rejected"}
+            </h2>
+            <p style="color: #666;">
+              Your delivery for order #${orderId} has been ${isApproved ? "verified and approved" : "rejected by admin"}.
+            </p>
+            <p style="color: #666;">
+              <strong>Customer:</strong> ${customerName || "N/A"}
+            </p>
+            
+            ${
+              adminNote
+                ? `
+              <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <p style="margin: 0;"><strong>Admin Note:</strong> ${adminNote}</p>
+              </div>
+            `
+                : ""
+            }
+
+            ${
+              !isApproved
+                ? `
+              <div style="background: #fef2f2; padding: 15px; border-radius: 8px; border-left: 4px solid #ef4444; margin: 20px 0;">
+                <p style="color: #dc2626; margin: 0;">
+                  Please re-deliver the order or contact support for more information.
+                </p>
+              </div>
+            `
+                : `
+              <div style="background: #d1fae5; padding: 15px; border-radius: 8px; border-left: 4px solid #10b981; margin: 20px 0;">
+                <p style="color: #065f46; margin: 0;">
+                  ✅ Delivery confirmed! Thank you for your service.
+                </p>
+              </div>
+            `
+            }
+  
+            
+            <p style="color: #999; font-size: 12px; text-align: center;">
+              Thank you for your delivery service!
+            </p>
+          </div>
+        </body>
+        </html>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+    logger.info(`✅ Delivery verification result email sent to ${driverEmail}`);
+    return { success: true };
+  } catch (error) {
+    console.error(
+      "❌ Failed to send delivery verification result email:",
+      error,
+    );
+    return { success: false, error: error.message };
+  }
+};
+
+// ─── Send Return Pickup Verification Result Email to Driver ────────────────
+
+export const sendReturnPickupVerificationEmail = async (driverEmail, data) => {
+  try {
+    const transporter = createTransporter();
+
+    const { returnId, status, adminNote, customerName } = data;
+    const isApproved = status === "approved";
+
+    const mailOptions = {
+      from: `"Apex Store" <${process.env.EMAIL_USER}>`,
+      to: driverEmail,
+      subject: `${isApproved ? "✅" : "❌"} Return Pickup ${isApproved ? "Verified" : "Rejected"} - Return #${returnId}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Return Pickup ${isApproved ? "Verified" : "Rejected"}</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px;">
+          <div style="max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px;">
+            <h2 style="color: ${isApproved ? "#10b981" : "#ef4444"};">
+              ${isApproved ? "✅ Return Pickup Verified!" : "❌ Return Pickup Rejected"}
+            </h2>
+            <p style="color: #666;">
+              Your return pickup for return #${returnId} has been ${isApproved ? "verified and approved" : "rejected by admin"}.
+            </p>
+            <p style="color: #666;">
+              <strong>Customer:</strong> ${customerName || "N/A"}
+            </p>
+            
+            ${
+              adminNote
+                ? `
+              <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <p style="margin: 0;"><strong>Admin Note:</strong> ${adminNote}</p>
+              </div>
+            `
+                : ""
+            }
+
+            ${
+              !isApproved
+                ? `
+              <div style="background: #fef2f2; padding: 15px; border-radius: 8px; border-left: 4px solid #ef4444; margin: 20px 0;">
+                <p style="color: #dc2626; margin: 0;">
+                  Please contact support for more information about this return pickup.
+                </p>
+              </div>
+            `
+                : `
+              <div style="background: #d1fae5; padding: 15px; border-radius: 8px; border-left: 4px solid #10b981; margin: 20px 0;">
+                <p style="color: #065f46; margin: 0;">
+                  ✅ Return pickup confirmed! Thank you for your service.
+                </p>
+              </div>
+            `
+            }            
+            <p style="color: #999; font-size: 12px; text-align: center;">
+              Thank you for your pickup service!
+            </p>
+          </div>
+        </body>
+        </html>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+    logger.info(`✅ Return pickup verification email sent to ${driverEmail}`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ Failed to send return pickup verification email:", error);
+    return { success: false, error: error.message };
+  }
+};
+
 export default {
   sendOtpEmail,
   sendWelcomeEmail,
@@ -690,4 +1379,11 @@ export default {
   sendOrderConfirmationEmail,
   sendOrderStatusUpdateEmail,
   sendContactEmail,
+  sendDeliveryAssignmentEmail,
+  sendPickupAssignmentEmail,
+  sendRefundNotificationEmail,
+  sendReturnApprovedEmail,
+  sendDeliveryConfirmationEmail,
+  sendDeliveryVerificationResultEmail,
+  sendReturnPickupVerificationEmail,
 };

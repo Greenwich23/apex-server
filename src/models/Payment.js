@@ -16,7 +16,7 @@ const paymentSchema = new Schema(
 
     provider: {
       type: String,
-      enum: ["stripe", "razorpay", "paypal", "cod"],
+      enum: ["stripe", "razorpay", "paypal", "cod", "paystack"],
       required: true,
     },
 

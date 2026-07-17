@@ -1,12 +1,12 @@
+// controllers/cart.controller.js
+import mongoose from "mongoose";
 import Cart from "../../models/Cart.js";
 import Product from "../../models/Product.js";
 import ProductVariant from "../../models/ProductVariant.js";
+import Coupon from "../../models/Coupon.js";
 import { successResponse, errorResponse } from "../../utils/apiResponse.js";
 
 // ─── shared populate helper ───────────────────────────────────────────────────
-// one place to define which fields come back on every cart response
-// so getCart, addToCart, updateCartItem, removeFromCart all return the same shape
-
 const populateCart = (cartQuery) =>
   cartQuery
     .populate({
@@ -17,22 +17,88 @@ const populateCart = (cartQuery) =>
         select: "name logo",
       },
     })
-    .populate("items.variant", "label price discountPrice stock image")
-    .populate("couponApplied", "code type value maxDiscount");
+    .populate("items.variant", "label price discountPrice stock image");
+
+// ─── helper to enrich coupon data ────────────────────────────────────────────
+const enrichCouponData = async (cart) => {
+  if (!cart) return cart;
+
+  console.log("🔍 [enrichCouponData] Cart couponApplied:", cart.couponApplied);
+
+  // ✅ Check if couponApplied exists and is a reference (ObjectId)
+  if (cart.couponApplied) {
+    let couponId = cart.couponApplied;
+
+    // If couponApplied is an object with _id, extract the id
+    if (typeof couponId === "object" && couponId._id) {
+      couponId = couponId._id;
+    }
+
+    // If couponApplied is a string (ObjectId), fetch the coupon
+    if (
+      couponId &&
+      (typeof couponId === "string" ||
+        couponId instanceof mongoose.Types.ObjectId)
+    ) {
+      console.log("🔍 [enrichCouponData] Fetching coupon with ID:", couponId);
+      const coupon = await Coupon.findById(couponId);
+      if (coupon) {
+        console.log("✅ [enrichCouponData] Found coupon:", coupon.code);
+        // ✅ Replace the ID with the full coupon object
+        cart.couponApplied = {
+          _id: coupon._id,
+          code: coupon.code,
+          type: coupon.type,
+          value: coupon.value,
+          discountAmount: cart.discount || 0,
+          maxDiscount: coupon.maxDiscount,
+          minOrderAmount: coupon.minOrderAmount,
+          expiresAt: coupon.expiresAt,
+          isActive: coupon.isActive,
+          usageLimit: coupon.usageLimit,
+          perUserLimit: coupon.perUserLimit,
+          isFirstTimeOnly: coupon.isFirstTimeOnly,
+        };
+        console.log(
+          "✅ [enrichCouponData] Enriched couponApplied:",
+          cart.couponApplied,
+        );
+      } else {
+        console.log("❌ [enrichCouponData] Coupon not found for ID:", couponId);
+        cart.couponApplied = null;
+      }
+    }
+  }
+  return cart;
+};
 
 // GET /api/cart
 export const getCart = async (req, res) => {
   try {
-    const cart = await populateCart(Cart.findOne({ user: req.user.id }));
+    console.log("🔍 [getCart] Fetching cart for user:", req.user.id);
+
+    let cart = await populateCart(Cart.findOne({ user: req.user.id }));
 
     if (!cart) {
+      console.log("📦 [getCart] Cart is empty");
       return successResponse(res, "Cart is empty", {
         cart: { items: [], total: 0 },
       });
     }
 
+    console.log("📦 [getCart] Cart found, couponApplied:", cart.couponApplied);
+
+    // ✅ Enrich coupon data (convert ObjectId to full coupon object)
+    cart = await enrichCouponData(cart);
+
+    console.log(
+      "📦 [getCart] After enrichment, couponApplied:",
+      cart.couponApplied,
+    );
+
     return successResponse(res, "Cart fetched", { cart });
   } catch (error) {
+    console.error("❌ Error fetching cart:", error);
     return errorResponse(res, error.message);
   }
 };
@@ -97,8 +163,8 @@ export const addToCart = async (req, res) => {
       await cart.save();
     }
 
-    // re-populate after save so the response has full product data
-    const populatedCart = await populateCart(Cart.findById(cart._id));
+    let populatedCart = await populateCart(Cart.findById(cart._id));
+    populatedCart = await enrichCouponData(populatedCart);
 
     return successResponse(
       res,
@@ -107,11 +173,10 @@ export const addToCart = async (req, res) => {
       201,
     );
   } catch (error) {
+    console.error("❌ Error adding to cart:", error);
     return errorResponse(res, error.message);
   }
 };
-
-// controllers/cart.controller.js
 
 // POST /api/cart/merge
 export const mergeCart = async (req, res) => {
@@ -119,13 +184,11 @@ export const mergeCart = async (req, res) => {
     const { items } = req.body;
     const userId = req.user.id;
 
-    // Get or create user's cart
     let cart = await Cart.findOne({ user: userId });
     if (!cart) {
       cart = await Cart.create({ user: userId, items: [] });
     }
 
-    // Merge guest items with existing cart
     for (const guestItem of items) {
       const existingItem = cart.items.find(
         (item) =>
@@ -136,10 +199,8 @@ export const mergeCart = async (req, res) => {
       );
 
       if (existingItem) {
-        // Update quantity if item exists
         existingItem.quantity += guestItem.quantity;
       } else {
-        // Add new item
         cart.items.push({
           product: guestItem.productId,
           variant: guestItem.variantId || null,
@@ -150,9 +211,12 @@ export const mergeCart = async (req, res) => {
     }
 
     await cart.save();
-    await cart.populate("items.product items.variant");
+    let populatedCart = await populateCart(Cart.findById(cart._id));
+    populatedCart = await enrichCouponData(populatedCart);
 
-    return successResponse(res, "Cart merged successfully", { cart });
+    return successResponse(res, "Cart merged successfully", {
+      cart: populatedCart,
+    });
   } catch (error) {
     console.error("Error merging cart:", error);
     return errorResponse(res, error.message);
@@ -165,16 +229,20 @@ export const updateCartItem = async (req, res) => {
     const { quantity } = req.body;
     const { itemId } = req.params;
 
-    if (quantity < 1)
+    if (quantity < 1) {
       return errorResponse(res, "Quantity must be at least 1", 400);
+    }
 
     const cart = await Cart.findOne({ user: req.user.id });
-    if (!cart) return errorResponse(res, "Cart not found", 404);
+    if (!cart) {
+      return errorResponse(res, "Cart not found", 404);
+    }
 
     const item = cart.items.id(itemId);
-    if (!item) return errorResponse(res, "Item not found in cart", 404);
+    if (!item) {
+      return errorResponse(res, "Item not found in cart", 404);
+    }
 
-    // re-check stock before updating
     const product = await Product.findById(item.product);
     const stock = item.variant
       ? (await ProductVariant.findById(item.variant))?.stock
@@ -187,11 +255,12 @@ export const updateCartItem = async (req, res) => {
     item.quantity = quantity;
     await cart.save();
 
-    // re-populate so response has full product/brand/images data
-    const populatedCart = await populateCart(Cart.findById(cart._id));
+    let populatedCart = await populateCart(Cart.findById(cart._id));
+    populatedCart = await enrichCouponData(populatedCart);
 
     return successResponse(res, "Cart updated", { cart: populatedCart });
   } catch (error) {
+    console.error("❌ Error updating cart:", error);
     return errorResponse(res, error.message);
   }
 };
@@ -200,7 +269,9 @@ export const updateCartItem = async (req, res) => {
 export const removeFromCart = async (req, res) => {
   try {
     const cart = await Cart.findOne({ user: req.user.id });
-    if (!cart) return errorResponse(res, "Cart not found", 404);
+    if (!cart) {
+      return errorResponse(res, "Cart not found", 404);
+    }
 
     cart.items = cart.items.filter(
       (item) => item._id.toString() !== req.params.itemId,
@@ -208,13 +279,14 @@ export const removeFromCart = async (req, res) => {
 
     await cart.save();
 
-    // re-populate so response stays consistent
-    const populatedCart = await populateCart(Cart.findById(cart._id));
+    let populatedCart = await populateCart(Cart.findById(cart._id));
+    populatedCart = await enrichCouponData(populatedCart);
 
     return successResponse(res, "Item removed from cart", {
       cart: populatedCart,
     });
   } catch (error) {
+    console.error("❌ Error removing from cart:", error);
     return errorResponse(res, error.message);
   }
 };
@@ -224,11 +296,12 @@ export const clearCart = async (req, res) => {
   try {
     await Cart.findOneAndUpdate(
       { user: req.user.id },
-      { items: [], couponApplied: null },
+      { items: [], couponApplied: null, discount: 0 },
     );
 
     return successResponse(res, "Cart cleared");
   } catch (error) {
+    console.error("❌ Error clearing cart:", error);
     return errorResponse(res, error.message);
   }
 };

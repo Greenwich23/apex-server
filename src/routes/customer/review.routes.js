@@ -6,7 +6,10 @@ import {
 } from "../../controllers/customer/review.controller.js";
 import protect from "../../middleware/auth.js";
 import { uploadReviewImages } from "../../middleware/upload.js";
-import { validate, reviewValidation } from "../../middleware/validateRequest.js";
+import {
+  validate,
+  reviewValidation,
+} from "../../middleware/validateRequest.js";
 
 const router = express.Router({ mergeParams: true });
 // mergeParams: true is important here — it lets this router
@@ -22,11 +25,11 @@ router.post(
   uploadReviewImages,
   reviewValidation,
   validate,
-  createReview
+  createReview,
 );
 
 // DELETE /api/reviews/:id — must be logged in
 // this one is mounted separately in product.routes.js
-router.delete("/:id", protect, deleteReview);
+// router.delete("/:reviewId", protect, deleteReview);
 
 export default router;

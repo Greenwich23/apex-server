@@ -8,6 +8,7 @@ import {
   sendWelcomeEmail,
   sendPasswordResetEmail,
 } from "../../services/emailService.js";
+import { notifyNewCustomer } from "../../services/notificationService.js";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -49,10 +50,11 @@ export const register = async (req, res) => {
     await user.save();
 
     // send OTP via EmailJS (non-blocking — signup succeeds even if email fails)
-    await sendOtpEmail(user.email, user.name, otp);
+    await sendOtpEmail(user.email, otp, user.name);
     console.log(`📧 OTP for ${email}: ${otp}`);
 
-    // ✅ NO token generated here - user must verify OTP first
+    await notifyNewCustomer(user);
+    console.log(`📢 New customer notification sent for ${user.email}`);
 
     return successResponse(
       res,
@@ -137,7 +139,7 @@ export const sendOtp = async (req, res) => {
     };
     await user.save();
 
-    await sendOtpEmail(user.email, user.name, otp);
+    await sendOtpEmail(user.email, otp, user.name);
     console.log(`📧 OTP resent to ${email}: ${otp}`);
 
     return successResponse(res, "OTP sent to your email");

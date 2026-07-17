@@ -1,11 +1,12 @@
 // controllers/customer/product.controller.js
+
 import Product from "../../models/Product.js";
 import ProductVariant from "../../models/ProductVariant.js";
-import Review from "../../models/Review.js";
 import Category from "../../models/Category.js";
-import Brand from "../../models/Brand.js";
 import Sport from "../../models/Sport.js";
+import FitnessGoal from "../../models/FitnessGoal.js";
 import { successResponse, errorResponse } from "../../utils/apiResponse.js";
+import Review from "../../models/Review.js";
 
 // GET /api/products
 export const getProducts = async (req, res) => {
@@ -29,7 +30,7 @@ export const getProducts = async (req, res) => {
     const filter = { isActive: true };
 
     // =====================
-    // SEARCH - FIXED
+    // SEARCH
     // =====================
     if (search && search.trim()) {
       const searchRegex = new RegExp(search.trim(), "i");
@@ -173,19 +174,34 @@ export const getProducts = async (req, res) => {
       isActive: true,
     });
 
+    // ✅ FIXED: Map products with proper discount fields
     const productsWithVariants = products.map((product) => {
       const productVariants = variants.filter(
         (v) => v.product.toString() === product._id.toString(),
       );
+      const productObj = product.toObject();
+
+      // ✅ Ensure discount fields are included
       return {
-        ...product.toObject(),
+        ...productObj,
+        // ✅ If discountPrice exists, use it. Otherwise use price as fallback
+        discountPrice: productObj.discountPrice || null,
+        originalPrice: productObj.originalPrice || null,
+        // ✅ Price should be the regular price
+        price: productObj.price || 0,
         variants: productVariants,
         hasVariants: productVariants.length > 0,
+        // ✅ For frontend convenience
+        displayPrice: productObj.discountPrice || productObj.price || 0,
+        isOnSale: !!(
+          productObj.discountPrice &&
+          productObj.discountPrice < productObj.price
+        ),
       };
     });
 
     // =====================
-    // GET CATEGORY COUNTS - FIXED
+    // GET CATEGORY COUNTS
     // =====================
     const categoryCounts = await Product.aggregate([
       { $match: { isActive: true } },
@@ -211,7 +227,6 @@ export const getProducts = async (req, res) => {
       countsMap[item._id] = item.count;
     });
 
-    // Get all categories for the response
     const allCategories = await Category.find({ isActive: true });
     const categoryOptions = [
       { equipment: "All", count: total || 0 },
@@ -260,8 +275,20 @@ export const getProductBySlug = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(10);
 
+    // ✅ Also include discount info in single product response
+    const productObj = product.toObject();
+    const productWithDiscount = {
+      ...productObj,
+      discountPrice: productObj.discountPrice || null,
+      originalPrice: productObj.originalPrice || null,
+      displayPrice: productObj.discountPrice || productObj.price || 0,
+      isOnSale: !!(
+        productObj.discountPrice && productObj.discountPrice < productObj.price
+      ),
+    };
+
     return successResponse(res, "Product fetched", {
-      product,
+      product: productWithDiscount,
       variants,
       reviews,
     });
@@ -270,6 +297,8 @@ export const getProductBySlug = async (req, res) => {
     return errorResponse(res, error.message);
   }
 };
+
+// ... rest of your functions (getSearchSuggestions, getRelatedProducts, getFeaturedProducts)
 
 // GET /api/products/search/suggestions?q=
 export const getSearchSuggestions = async (req, res) => {
@@ -332,6 +361,31 @@ export const getFeaturedProducts = async (req, res) => {
     return successResponse(res, "Featured products fetched", { products });
   } catch (error) {
     console.error("❌ Error fetching featured products:", error);
+    return errorResponse(res, error.message);
+  }
+};
+
+// controllers/product.controller.js
+export const getCategoryCounts = async (req, res) => {
+  try {
+    // Get all categories
+    const categories = await Category.find({ isActive: true });
+
+    // Get product counts per category
+    const counts = {};
+
+    for (const category of categories) {
+      const count = await Product.countDocuments({
+        category: category._id,
+        isActive: true,
+      });
+      counts[category._id] = count;
+      counts[category.name] = count;
+    }
+
+    return successResponse(res, "Category counts fetched", { data: counts });
+  } catch (error) {
+    console.error("Error fetching category counts:", error);
     return errorResponse(res, error.message);
   }
 };

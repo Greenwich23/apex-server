@@ -2,6 +2,7 @@ import Review from "../../models/Review.js";
 import Product from "../../models/Product.js";
 import Order from "../../models/Order.js";
 import { successResponse, errorResponse } from "../../utils/apiResponse.js";
+import { notifyNewReview } from "../../services/notificationService.js";
 
 // ─── helper: recalculate product average rating ──────────────────────────────
 const updateProductRating = async (productId) => {
@@ -60,6 +61,9 @@ export const createReview = async (req, res) => {
       images,
       isVerifiedPurchase: !!hasPurchased,
     });
+
+    await notifyNewReview(review);
+    console.log("New review made");
 
     // update the product's average rating after adding the new review
     await updateProductRating(product._id);

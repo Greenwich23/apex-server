@@ -5,6 +5,7 @@ import {
   getSearchSuggestions,
   getRelatedProducts,
   getFeaturedProducts,
+  getCategoryCounts,
 } from "../../controllers/customer/product.controller.js";
 import {
   createReview,
@@ -40,5 +41,6 @@ router.post(
   createReview,
 );
 router.delete("/reviews/:id", protect, deleteReview);
+router.get("/category-counts", getCategoryCounts);
 
 export default router;

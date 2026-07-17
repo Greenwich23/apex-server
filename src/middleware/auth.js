@@ -1,12 +1,12 @@
+// middleware/auth.js
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import { errorResponse } from "../utils/apiResponse.js";
 
-const protect = async (req, res, next) => {
+export const protect = async (req, res, next) => {
   try {
     let token;
 
-    // token comes in as "Bearer <token>" in the Authorization header
     if (
       req.headers.authorization &&
       req.headers.authorization.startsWith("Bearer")
@@ -18,12 +18,10 @@ const protect = async (req, res, next) => {
       return errorResponse(res, "Not authenticated. Please log in.", 401);
     }
 
-    // verify the token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // attach the user to the request so controllers can access req.user
     const user = await User.findById(decoded.id).select(
-      "-password -otp -passwordResetToken -passwordResetExpires"
+      "-password -otp -passwordResetToken -passwordResetExpires",
     );
 
     if (!user) {
@@ -41,10 +39,32 @@ const protect = async (req, res, next) => {
       return errorResponse(res, "Invalid token. Please log in again.", 401);
     }
     if (error.name === "TokenExpiredError") {
-      return errorResponse(res, "Your session has expired. Please log in again.", 401);
+      return errorResponse(
+        res,
+        "Your session has expired. Please log in again.",
+        401,
+      );
     }
     return errorResponse(res, error.message);
   }
+};
+
+// Admin middleware - checks if user has admin role
+export const admin = (req, res, next) => {
+  if (!req.user) {
+    return errorResponse(res, "Not authenticated. Please log in.", 401);
+  }
+
+  // Check if user has admin role (since your enum has "customer" and "admin")
+  if (req.user.role !== "admin") {
+    console.log(
+      `❌ Access denied: User ${req.user.email} has role: ${req.user.role}`,
+    );
+    return errorResponse(res, "Access denied. Admin privileges required.", 403);
+  }
+
+  console.log(`✅ Admin access granted: ${req.user.email}`);
+  next();
 };
 
 export default protect;

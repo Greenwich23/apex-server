@@ -4,8 +4,18 @@ import morgan from "morgan";
 import customerRoutes from "./routes/customer/index.js";
 import adminRoutes from "./routes/admin/index.js";
 import errorHandler from "./middleware/errorHandler.js";
+import driverRoutes from "./routes/driver/return.routes.js";
 
 const app = express();
+
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+app.use(
+  "/api/payments/stripe/webhook",
+  express.raw({ type: "application/json" }),
+);
+app.use("/api/payments/paystack/webhook", express.json());
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 // apex-server/src/app.js
@@ -43,6 +53,7 @@ app.get("/", (req, res) => {
 // ─── ROUTES ───────────────────────────────────────────────────────────────────
 app.use("/api", customerRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/delivery/return", driverRoutes);
 
 // ─── 404 HANDLER ─────────────────────────────────────────────────────────────
 app.use((req, res) => {

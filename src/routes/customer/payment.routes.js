@@ -6,6 +6,9 @@ import {
   verifyRazorpayPayment,
   confirmCodOrder,
   getPaymentStatus,
+  initializePaystackPayment,
+  verifyPaystackPayment,
+  paystackWebhook,
 } from "../../controllers/customer/payment.controller.js";
 import protect from "../../middleware/auth.js";
 
@@ -19,7 +22,7 @@ const router = express.Router();
 router.post(
   "/stripe/webhook",
   express.raw({ type: "application/json" }), // raw body for Stripe signature check
-  stripeWebhook
+  stripeWebhook,
 );
 
 // all other payment routes require login
@@ -30,6 +33,13 @@ router.post("/stripe/create-intent", protect, createStripePaymentIntent);
 router.post("/razorpay/create-order", protect, createRazorpayOrder);
 router.post("/razorpay/verify", protect, verifyRazorpayPayment);
 
+// -----PAYSTACK ------ //
+
+router.post("/paystack/initialize", protect, initializePaystackPayment);
+
+router.get("/paystack/verify/:reference", protect, verifyPaystackPayment);
+
+router.post("/paystack/webhook", protect, paystackWebhook);
 // ─── COD ──────────────────────────────────────────────────────────────────────
 
 router.post("/cod/confirm", protect, confirmCodOrder);
