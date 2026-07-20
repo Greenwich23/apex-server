@@ -23,8 +23,10 @@ app.use(
   cors({
     origin: [
       process.env.CUSTOMER_URL || "http://localhost:5173",
+      "http://localhost:5173",
       process.env.ADMIN_URL || "http://localhost:3001",
       "https://apexsportsfitness.netlify.app",
+      "https://apex-server-niit.fly.dev",
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
