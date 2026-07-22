@@ -1,12 +1,18 @@
 // controllers/admin/return.controller.js
 import ReturnRequest from "../../models/ReturnRequest.js";
 import Payment from "../../models/Payment.js";
+import Product from "../../models/Product.js"; // ✅ Add this import
+import Order from "../../models/Order.js"; // ✅ Add this import
+import DeliveryAgent from "../../models/DeliveryAgent.js";
 import { successResponse, errorResponse } from "../../utils/apiResponse.js";
 import {
   notifyNewReturn,
   notifyReturnPickupUpdate,
 } from "../../services/notificationService.js";
-import { sendReturnPickupVerificationEmail } from "../../services/emailService.js";
+import {
+  sendReturnPickupVerificationEmail,
+  sendPickupAssignmentEmail,
+} from "../../services/emailService.js";
 
 // GET /api/admin/returns
 export const getAllReturnRequests = async (req, res) => {
@@ -26,7 +32,7 @@ export const getAllReturnRequests = async (req, res) => {
             path: "items.product",
             select: "name images price sku",
           },
-        }) // ✅ Populate order with items and product details
+        })
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(Number(limit)),
@@ -66,8 +72,6 @@ export const updateReturnStatus = async (req, res) => {
 
     await returnRequest.save();
 
-    // Send email notification to user
-    // await sendReturnStatusEmail(returnRequest, status);
     return successResponse(res, "Return status updated", { returnRequest });
   } catch (error) {
     return errorResponse(res, error.message);
@@ -78,8 +82,6 @@ export const updateReturnStatus = async (req, res) => {
 export const resolveReturnRequest = async (req, res) => {
   try {
     const { status, adminNote } = req.body;
-    // status here is: "approved" | "rejected" | "refunded" | "completed"
-
     const returnRequest = await ReturnRequest.findById(req.params.id).populate({
       path: "order",
       populate: {
@@ -100,7 +102,6 @@ export const resolveReturnRequest = async (req, res) => {
 
     await returnRequest.save();
 
-    // if marking as refunded, update the payment record too
     if (status === "refunded") {
       await Payment.findOneAndUpdate(
         { order: returnRequest.order._id },
@@ -115,7 +116,7 @@ export const resolveReturnRequest = async (req, res) => {
   }
 };
 
-// ✅ NEW: Get single return request by ID (with full details)
+// GET single return request by ID (with full details)
 export const getReturnRequestById = async (req, res) => {
   try {
     const { returnRequestId } = req.params;
@@ -142,7 +143,128 @@ export const getReturnRequestById = async (req, res) => {
   }
 };
 
-// controllers/admin/return.controller.js - Updated assignPickupAgent
+// ─── GET /api/delivery/pickup/:returnRequestId ──────────────────────────────
+// Public route for driver to view pickup details (no auth required)
+
+export const getReturnRequestByIdPublic = async (req, res) => {
+  try {
+    const { returnRequestId } = req.params;
+
+    console.log(
+      "🔍 [getReturnRequestByIdPublic] Fetching return:",
+      returnRequestId,
+    );
+
+    // ✅ First, get the return request with populated fields
+    const returnRequest = await ReturnRequest.findById(returnRequestId)
+      .populate("user", "name email phone")
+      .populate("pickupAgent", "name phone");
+
+    if (!returnRequest) {
+      console.log("❌ [getReturnRequestByIdPublic] Return not found");
+      return errorResponse(res, "Return request not found", 404);
+    }
+
+    // ✅ Check if return is in a valid state for pickup
+    if (returnRequest.status !== "pickup_assigned") {
+      return errorResponse(
+        res,
+        `Return is not ready for pickup. Current status: ${returnRequest.status}`,
+        400,
+      );
+    }
+
+    // ✅ Populate the order with product details
+    if (returnRequest.order) {
+      await returnRequest.populate({
+        path: "order",
+        populate: {
+          path: "items.product",
+          select: "name images price sku description",
+        },
+      });
+    }
+
+    // ✅ IMPORTANT: Populate the product details in the return items
+    // The return items only have product IDs, we need to populate them
+    if (returnRequest.items && returnRequest.items.length > 0) {
+      // Populate the product for each return item
+      await ReturnRequest.populate(returnRequest, {
+        path: "items.product",
+        select: "name images price sku description",
+      });
+    }
+
+    console.log(
+      "✅ [getReturnRequestByIdPublic] Return found:",
+      returnRequest._id,
+    );
+    console.log(
+      "📦 [getReturnRequestByIdPublic] Items with products:",
+      returnRequest.items?.length,
+    );
+
+    return successResponse(res, "Return pickup details fetched", {
+      returnRequest,
+    });
+  } catch (error) {
+    console.error("❌ [getReturnRequestByIdPublic] Error:", error);
+    return errorResponse(res, error.message);
+  }
+};
+
+// ─── PUT /api/delivery/pickup/:returnRequestId/mark-picked-up ──────────────
+// Public route for driver to mark pickup as completed (no auth required)
+
+export const markReturnPickedUpPublic = async (req, res) => {
+  try {
+    const { returnRequestId } = req.params;
+    const { notes } = req.body;
+
+    console.log(
+      "🔍 [markReturnPickedUpPublic] Marking return as picked up:",
+      returnRequestId,
+    );
+
+    const returnRequest = await ReturnRequest.findById(returnRequestId)
+      .populate("user", "name email")
+      .populate("pickupAgent", "name email");
+
+    if (!returnRequest) {
+      return errorResponse(res, "Return request not found", 404);
+    }
+
+    if (returnRequest.status !== "pickup_assigned") {
+      return errorResponse(
+        res,
+        `Return is not ready for pickup. Current status: ${returnRequest.status}`,
+        400,
+      );
+    }
+
+    // ✅ Update status to picked_up
+    returnRequest.status = "picked_up";
+    returnRequest.pickedUpAt = new Date();
+    if (notes) returnRequest.adminNote = notes;
+
+    await returnRequest.save();
+
+    // ✅ Send notification to admin
+    await notifyReturnPickupUpdate(returnRequest, "picked_up");
+    console.log(
+      `📢 Notification: Return ${returnRequestId} marked as picked up`,
+    );
+
+    return successResponse(res, "Return marked as picked up successfully", {
+      returnRequest,
+    });
+  } catch (error) {
+    console.error("❌ [markReturnPickedUpPublic] Error:", error);
+    return errorResponse(res, error.message);
+  }
+};
+
+// ─── Admin: Assign Pickup Agent ─────────────────────────────────────────────
 
 export const assignPickupAgent = async (req, res) => {
   try {
@@ -186,15 +308,20 @@ export const assignPickupAgent = async (req, res) => {
       await agent.save();
     }
 
-    // ✅ Send email with the correct pickup link
+    // ✅ Build the pickup link
+    const baseUrl = process.env.CUSTOMER_URL || "http://localhost:5173";
+    const pickupLink = `${baseUrl}/delivery/pickup/${returnRequestId}`;
+
+    // ✅ Send email with the pickup link
     try {
       await sendPickupAssignmentEmail(agent.email, agent.name, {
-        returnRequestId: returnRequest._id.toString(), // ✅ Pass the ID as string
+        returnRequestId: returnRequest._id.toString(),
         orderId:
           returnRequest.order?.orderId ||
           returnRequest.order?._id.toString().slice(-8).toUpperCase(),
         customerName: returnRequest.user?.name || "Customer",
         address: returnRequest.order?.shippingAddress,
+        pickupLink: pickupLink,
       });
       console.log("📧 [assignPickupAgent] Email sent to:", agent.email);
     } catch (emailError) {
@@ -203,6 +330,7 @@ export const assignPickupAgent = async (req, res) => {
 
     return successResponse(res, "Pickup agent assigned successfully", {
       returnRequest,
+      pickupLink,
     });
   } catch (error) {
     console.error("❌ [assignPickupAgent] Error:", error);
@@ -210,7 +338,7 @@ export const assignPickupAgent = async (req, res) => {
   }
 };
 
-// controllers/admin/return.admin.controller.js
+// ─── Admin: Mark Return as Picked Up ──────────────────────────────────────
 
 export const markReturnPickedUp = async (req, res) => {
   try {
@@ -221,15 +349,15 @@ export const markReturnPickedUp = async (req, res) => {
       "🔍 [markReturnPickedUp] Marking return as picked up:",
       returnRequestId,
     );
-    console.log("🔍 [markReturnPickedUp] Notes:", notes);
 
-    const returnRequest = await ReturnRequest.findById(returnRequestId);
+    const returnRequest = await ReturnRequest.findById(returnRequestId)
+      .populate("user", "name email")
+      .populate("pickupAgent", "name email");
 
     if (!returnRequest) {
       return errorResponse(res, "Return request not found", 404);
     }
 
-    // ✅ Check if return is in pickup_assigned state
     if (returnRequest.status !== "pickup_assigned") {
       return errorResponse(
         res,
@@ -238,7 +366,6 @@ export const markReturnPickedUp = async (req, res) => {
       );
     }
 
-    // ✅ Update status to picked_up
     returnRequest.status = "picked_up";
     returnRequest.pickedUpAt = new Date();
     if (notes) returnRequest.adminNote = notes;
@@ -248,11 +375,6 @@ export const markReturnPickedUp = async (req, res) => {
     await notifyReturnPickupUpdate(returnRequest, "picked_up");
     console.log(
       `📢 Notification: Return ${returnRequestId} marked as picked up`,
-    );
-
-    console.log(
-      "✅ [markReturnPickedUp] Return marked as picked up:",
-      returnRequest._id,
     );
 
     return successResponse(res, "Return marked as picked up successfully", {
@@ -315,7 +437,6 @@ export const getPendingReturnPickups = async (req, res) => {
 };
 
 // PUT /api/admin/returns/:returnId/verify-pickup
-// controllers/admin/return.admin.controller.js
 export const verifyReturnPickup = async (req, res) => {
   try {
     const { returnId } = req.params;
@@ -347,14 +468,12 @@ export const verifyReturnPickup = async (req, res) => {
     }
 
     if (action === "received") {
-      // ✅ Admin confirms receipt
       returnRequest.status = "received";
       returnRequest.receivedAt = new Date();
       if (adminNote) returnRequest.adminNote = adminNote;
 
       await returnRequest.save();
 
-      // ✅ Send email to driver
       await sendReturnPickupVerificationEmail(
         returnRequest.pickupAgent?.email,
         {
@@ -365,20 +484,17 @@ export const verifyReturnPickup = async (req, res) => {
         },
       );
 
-      // ✅ CREATE NOTIFICATION
       await notifyReturnPickupUpdate(returnRequest, "received");
 
       return successResponse(res, "Return received successfully", {
         returnRequest,
       });
     } else if (action === "reject") {
-      // ❌ Admin rejects pickup
       returnRequest.status = "pickup_failed";
       returnRequest.adminNote = adminNote || "Pickup verification failed";
 
       await returnRequest.save();
 
-      // ✅ Send email to driver
       await sendReturnPickupVerificationEmail(
         returnRequest.pickupAgent?.email,
         {
@@ -391,7 +507,6 @@ export const verifyReturnPickup = async (req, res) => {
         },
       );
 
-      // ✅ CREATE NOTIFICATION
       await notifyReturnPickupUpdate(returnRequest, "rejected");
 
       return successResponse(res, "Return pickup rejected. Driver notified.", {

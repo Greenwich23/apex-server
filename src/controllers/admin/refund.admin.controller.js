@@ -147,10 +147,10 @@ export const processRefund = async (req, res) => {
     }
 
     // ✅ Must be in "received" or "approved" status
-    if (!["received", "approved"].includes(returnRequest.status)) {
+    if (!["returned", "approved"].includes(returnRequest.status)) {
       return errorResponse(
         res,
-        `Return must be received or approved before refund. Current status: ${returnRequest.status}`,
+        `Return must be returned or approved before refund. Current status: ${returnRequest.status}`,
         400,
       );
     }

@@ -90,7 +90,7 @@ export const addressValidation = [
 
   body("city").notEmpty().withMessage("City is required").trim(),
 
-  body("state").notEmpty().withMessage("State is required").trim(),
+  // body("state").notEmpty().withMessage("State is required").trim(),
 
   body("zipCode").notEmpty().withMessage("Zip code is required").trim(),
 
